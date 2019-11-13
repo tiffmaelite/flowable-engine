@@ -13,6 +13,7 @@
 package org.flowable.cmmn.test.history;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -96,6 +97,61 @@ public class HistoricDataEngineDeleteTest {
                 cmmnManagementService.deleteTimerJob(cmmnManagementService.createTimerJobQuery().handlerType(CmmnHistoryCleanupJobHandler.TYPE).singleResult().getId());
             }
         
+        } finally {
+            cmmnEngineConfiguration.resetClock();
+        }
+    }
+
+    @Test
+    @CmmnDeployment(resources="org/flowable/cmmn/test/human-task-milestone-model.cmmn")
+    public void testHistoryCleanupTimerJob_noOldEnoughCompletedCases(CmmnEngineConfiguration cmmnEngineConfiguration, CmmnRuntimeService cmmnRuntimeService,
+                    CmmnHistoryService cmmnHistoryService, CmmnTaskService cmmnTaskService, CmmnManagementService cmmnManagementService) {
+
+        try {
+            Clock clock = cmmnEngineConfiguration.getClock();
+            Calendar cal = clock.getCurrentCalendar();
+            cal.add(Calendar.DAY_OF_YEAR, -20);
+            clock.setCurrentCalendar(cal);
+
+            List<String> caseInstanceIds = new ArrayList<>();
+            for (int i = 0; i < 10; i++) {
+                CaseInstance caseInstance = cmmnRuntimeService.createCaseInstanceBuilder().caseDefinitionKey("oneTaskCase").start();
+                caseInstanceIds.add(caseInstance.getId());
+                cmmnRuntimeService.setVariable(caseInstance.getId(), "testVar", "testValue" + (i + 1));
+                cmmnRuntimeService.setVariable(caseInstance.getId(), "numVar", (i + 1));
+            }
+
+            if (cmmnEngineConfiguration.getHistoryLevel() != HistoryLevel.NONE) {
+
+                assertEquals(10, cmmnHistoryService.createHistoricCaseInstanceQuery().count());
+
+                for (int i = 0; i < 10; i++) {
+                    Task task = cmmnTaskService.createTaskQuery().caseInstanceId(caseInstanceIds.get(i)).singleResult();
+                    cmmnTaskService.setVariableLocal(task.getId(), "taskVar", "taskValue" + (i + 1));
+                    cmmnTaskService.complete(task.getId());
+                }
+
+                assertEquals(1, cmmnManagementService.createTimerJobQuery().handlerType(CmmnHistoryCleanupJobHandler.TYPE).count());
+
+                Job executableJob = cmmnManagementService.moveTimerToExecutableJob(cmmnManagementService.createTimerJobQuery().handlerType(CmmnHistoryCleanupJobHandler.TYPE).singleResult().getId());
+                cmmnManagementService.executeJob(executableJob.getId());
+
+                assertEquals(1, cmmnManagementService.createTimerJobQuery().handlerType(CmmnHistoryCleanupJobHandler.TYPE).count());
+
+                assertNotEquals(10, cmmnHistoryService.createHistoricCaseInstanceQuery().count());
+                assertNotEquals(20, cmmnHistoryService.createHistoricPlanItemInstanceQuery().count());
+                assertNotEquals(10, cmmnHistoryService.createHistoricTaskInstanceQuery().count());
+
+                for (int i = 0; i < 10; i++) {
+                    assertEquals(1, cmmnHistoryService.getHistoricIdentityLinksForCaseInstance(caseInstanceIds.get(i)).size());
+                    assertEquals(1, cmmnHistoryService.createHistoricTaskLogEntryQuery().caseInstanceId(caseInstanceIds.get(i)).count());
+                    assertEquals(2, cmmnHistoryService.createHistoricVariableInstanceQuery().caseInstanceId(caseInstanceIds.get(i)).count());
+                    assertEquals(1, cmmnHistoryService.createHistoricMilestoneInstanceQuery().milestoneInstanceCaseInstanceId(caseInstanceIds.get(i)).count());
+                }
+
+                cmmnManagementService.deleteTimerJob(cmmnManagementService.createTimerJobQuery().handlerType(CmmnHistoryCleanupJobHandler.TYPE).singleResult().getId());
+            }
+
         } finally {
             cmmnEngineConfiguration.resetClock();
         }
