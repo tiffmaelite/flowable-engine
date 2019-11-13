@@ -203,6 +203,45 @@ public class HistoricDataDeleteTest extends PluggableFlowableTestCase {
 
     @Test
     @Deployment(resources="org/flowable/engine/test/bpmn/oneTask.bpmn20.xml")
+    public void testHistoryCleanupTimerJob_cleaningJobsNotTriggered() {
+        try {
+            processEngineConfiguration.setEnableHistoryCleaning(true);
+            Clock clock = processEngineConfiguration.getClock();
+            Calendar cal = clock.getCurrentCalendar();
+            cal.add(Calendar.DAY_OF_YEAR, -400);
+            clock.setCurrentCalendar(cal);
+
+            List<String> processInstanceIds = new ArrayList<>();
+            for (int i = 0; i < 20; i++) {
+                ProcessInstance processInstance = runtimeService.startProcessInstanceByKey("startToEnd");
+                processInstanceIds.add(processInstance.getId());
+                runtimeService.setVariable(processInstance.getId(), "testVar", "testValue" + (i + 1));
+                runtimeService.setVariable(processInstance.getId(), "numVar", (i + 1));
+            }
+
+            if (HistoryTestHelper.isHistoryLevelAtLeast(HistoryLevel.ACTIVITY, processEngineConfiguration)) {
+
+                assertEquals(20, historyService.createHistoricProcessInstanceQuery().count());
+
+                for (int i = 0; i < 10; i++) {
+                    Task task = taskService.createTaskQuery().processInstanceId(processInstanceIds.get(i)).singleResult();
+                    taskService.setVariableLocal(task.getId(), "taskVar", "taskValue" + (i + 1));
+                    taskService.complete(task.getId());
+                }
+
+                managementService.handleHistoryCleanupTimerJob();
+
+                assertEquals(0, managementService.createTimerJobQuery().handlerType(BpmnHistoryCleanupJobHandler.TYPE).count());
+            }
+
+        } finally {
+            processEngineConfiguration.setEnableHistoryCleaning(false);
+            processEngineConfiguration.resetClock();
+        }
+    }
+
+    @Test
+    @Deployment(resources="org/flowable/engine/test/bpmn/oneTask.bpmn20.xml")
     public void testHistoryCleanupTimerJob() {
         try {
             processEngineConfiguration.setEnableHistoryCleaning(true);
@@ -228,6 +267,8 @@ public class HistoricDataDeleteTest extends PluggableFlowableTestCase {
                     taskService.setVariableLocal(task.getId(), "taskVar", "taskValue" + (i + 1));
                     taskService.complete(task.getId());
                 }
+
+                processEngineConfiguration.resetClock();
                         
                 managementService.handleHistoryCleanupTimerJob();
                 

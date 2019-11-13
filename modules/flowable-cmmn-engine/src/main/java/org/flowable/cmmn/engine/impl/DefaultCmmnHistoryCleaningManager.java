@@ -31,7 +31,7 @@ public class DefaultCmmnHistoryCleaningManager implements CmmnHistoryCleaningMan
     @Override
     public HistoricCaseInstanceQuery createHistoricCaseInstanceCleaningQuery() {
         int days = cmmnEngineConfiguration.getCleanInstancesEndedAfterNumberOfDays();
-        Calendar cal = new GregorianCalendar();
+        Calendar cal = cmmnEngineConfiguration.getClock().getCurrentCalendar();
         cal.add(Calendar.DAY_OF_YEAR, -days);
         HistoricCaseInstanceQueryImpl historicCaseInstanceQuery = new HistoricCaseInstanceQueryImpl(cmmnEngineConfiguration.getCommandExecutor());
         historicCaseInstanceQuery.finishedBefore(cal.getTime());

@@ -29,7 +29,7 @@ public class DefaultHistoryCleaningManager implements HistoryCleaningManager {
     @Override
     public HistoricProcessInstanceQueryImpl createHistoricProcessInstanceCleaningQuery() {
         int days = processEngineConfiguration.getCleanInstancesEndedAfterNumberOfDays();
-        Calendar cal = new GregorianCalendar();
+        Calendar cal = processEngineConfiguration.getClock().getCurrentCalendar();
         cal.add(Calendar.DAY_OF_YEAR, -days);
         HistoricProcessInstanceQueryImpl historicProcessInstanceQuery = new HistoricProcessInstanceQueryImpl(processEngineConfiguration.getCommandExecutor());
         historicProcessInstanceQuery.finishedBefore(cal.getTime());
